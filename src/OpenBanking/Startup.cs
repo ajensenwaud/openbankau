@@ -15,11 +15,19 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Identity;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
 using Swashbuckle.AspNetCore.Swagger;
 using Swashbuckle.AspNetCore.SwaggerGen;
+using Npgsql;
+using Microsoft.EntityFrameworkCore;
+using OpenIddict;
+
 using OpenBanking.Filters;
+using OpenBanking.Helpers;
+using OpenBanking.Models;
+using OpenBanking.Data;
 
 namespace OpenBanking
 {
@@ -29,6 +37,8 @@ namespace OpenBanking
     public class Startup
     {
         private readonly IHostingEnvironment _hostingEnv;
+
+        public static string ConnectionString { get; set ; }
 
         private IConfiguration Configuration { get; }
 
@@ -41,6 +51,7 @@ namespace OpenBanking
         {
             _hostingEnv = env;
             Configuration = configuration;
+            ConnectionString = Configuration.GetValue<string>("ConnectionString");
         }
 
         /// <summary>
@@ -55,10 +66,61 @@ namespace OpenBanking
                 .AddJsonOptions(opts =>
                 {
                     opts.SerializerSettings.ContractResolver = new CamelCasePropertyNamesContractResolver();
-                    opts.SerializerSettings.Converters.Add(new StringEnumConverter {
+                    opts.SerializerSettings.Converters.Add(new StringEnumConverter
+                    {
                         CamelCaseText = true
                     });
                 });
+
+
+            services.AddDbContext<ApplicationDbContext>(options =>
+           {
+                // Configure the context to use Microsoft SQL Server.
+                options.UseNpgsql(Configuration["ConnectionString"]);
+
+                // Register the entity sets needed by OpenIddict.
+                // Note: use the generic overload if you need
+                // to replace the default OpenIddict entities.
+                options.UseOpenIddict();
+           });
+
+
+            // Register the Identity services.
+            services.AddIdentity<ApplicationUser, IdentityRole>()
+                .AddEntityFrameworkStores<DataContext>()
+                .AddDefaultTokenProviders();
+
+            // Register the OpenIddict services.
+            services.AddOpenIddict()
+                .AddCore(options =>
+                {
+            // Configure OpenIddict to use the Entity Framework Core stores and entities.
+            options.UseEntityFrameworkCore()
+                           .UseDbContext<ApplicationDbContext>();
+                })
+
+                .AddServer(options =>
+                {
+            // Register the ASP.NET Core MVC binder used by OpenIddict.
+            // Note: if you don't call this method, you won't be able to
+            // bind OpenIdConnectRequest or OpenIdConnectResponse parameters.
+            options.UseMvc();
+
+            // Enable the token endpoint (required to use the password flow).
+            options.EnableTokenEndpoint("/connect/token");
+
+            // Allow client applications to use the grant_type=password flow.
+            options.AllowPasswordFlow();
+
+            // During development, you can disable the HTTPS requirement.
+            options.DisableHttpsRequirement();
+
+            // Accept token requests that don't specify a client_id.
+            options.AcceptAnonymousClients();
+                })
+
+                .AddValidation();
+
 
             services
                 .AddSwaggerGen(c =>
@@ -70,9 +132,9 @@ namespace OpenBanking
                         Description = "Consumer Data Standards (ASP.NET Core 2.0)",
                         Contact = new Contact()
                         {
-                           Name = "Swagger Codegen Contributors",
-                           Url = "https://github.com/swagger-api/swagger-codegen",
-                           Email = ""
+                            Name = "Swagger Codegen Contributors",
+                            Url = "https://github.com/swagger-api/swagger-codegen",
+                            Email = ""
                         },
                         TermsOfService = ""
                     });
@@ -97,6 +159,7 @@ namespace OpenBanking
         public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory)
         {
             app
+                .UseAuthentication()
                 .UseMvc()
                 .UseDefaultFiles()
                 .UseStaticFiles()

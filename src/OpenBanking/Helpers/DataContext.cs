@@ -10,7 +10,7 @@ namespace OpenBanking.Helpers
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             // optionsBuilder.UseSqlite("Data Source=blogging.db");
-            optionsBuilder.UseNpgsql("Server=localhost;Port=5432;Database=openbankingau;User ID=postgres;Password=<password>");
+            optionsBuilder.UseNpgsql(Startup.ConnectionString);
         }
 
         // public DataContext(DbContextOptions<DataContext> options) : base(options) { }
